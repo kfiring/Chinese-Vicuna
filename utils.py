@@ -15,6 +15,7 @@ from transformers.generation.utils import (
     GenerationMixin,
 )
 import warnings
+from peft import __version__ as PEFT_VER
 from peft import PeftModel, PeftModelForCausalLM, LoraConfig
 import torch.distributed as dist
 from torch import nn
@@ -768,7 +769,10 @@ class StreamPeftGenerationMixin(PeftModelForCausalLM, StreamGenerationMixin):
             map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         )
         # load the weights into the model
-        model = set_peft_model_state_dict(model, adapters_weights)
+        if PEFT_VER <= '0.2.0':
+            model = set_peft_model_state_dict(model, adapters_weights)
+        else:
+            set_peft_model_state_dict(model, adapters_weights)
         if getattr(model, "hf_device_map", None) is not None:
             device_map = kwargs.get("device_map", "auto")
             max_memory = kwargs.get("max_memory", None)
@@ -788,7 +792,9 @@ class StreamPeftGenerationMixin(PeftModelForCausalLM, StreamGenerationMixin):
                 )
             model = dispatch_model(model, device_map=device_map)
             hook = AlignDevicesHook(io_same_device=True)
-            if model.peft_config.peft_type == PeftType.LORA:
+            peft_type = model.peft_config.peft_type if PEFT_VER <= '0.2.0' else model.peft_type
+            # if model.peft_config.peft_type == PeftType.LORA:
+            if peft_type == PeftType.LORA:
                 add_hook_to_module(model.base_model.model, hook)
             else:
                 remove_hook_from_submodules(model.prompt_encoder)
